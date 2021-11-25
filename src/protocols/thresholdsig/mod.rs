@@ -11,7 +11,8 @@
     version 3 of the License, or (at your option) any later version.
     @license GPL-3.0+ <https://github.com/KZen-networks/multi-party-eddsa/blob/master/LICENSE>
 */
-use Error::{self, InvalidKey, InvalidSS, InvalidSig};
+use crate::Error;
+use crate::Error::{InvalidKey, InvalidSS, InvalidSig};
 
 use curv::arithmetic::traits::*;
 
@@ -24,6 +25,7 @@ use curv::cryptographic_primitives::hashing::traits::*;
 use curv::cryptographic_primitives::secret_sharing::feldman_vss::VerifiableSS;
 use curv::elliptic::curves::ed25519::{FE, GE};
 use curv::BigInt;
+use serde::{Serialize, Deserialize};
 
 const SECURITY: usize = 256;
 

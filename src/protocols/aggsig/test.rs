@@ -20,7 +20,7 @@ mod tests {
     use curv::elliptic::curves::ed25519::{FE, GE};
     use curv::elliptic::curves::traits::ECPoint;
     use curv::BigInt;
-    use protocols::aggsig::{test_com, verify, KeyPair, Signature};
+    use crate::protocols::aggsig::{test_com, verify, KeyPair, Signature};
 
     #[test]
     fn test_ed25519_generate_keypair_from_seed() {

@@ -23,8 +23,9 @@ use curv::cryptographic_primitives::hashing::hash_sha512::HSha512;
 use curv::cryptographic_primitives::hashing::traits::*;
 use curv::elliptic::curves::ed25519::{FE, GE};
 use curv::elliptic::curves::traits::*;
+use curv::elliptic::curves::traits::ECPoint;
 use curv::BigInt;
-use protocols::multisig;
+use super::super::protocols::multisig;
 
 // TODO: move to a common location to be used by all protocols.
 #[derive(Debug, Clone)]

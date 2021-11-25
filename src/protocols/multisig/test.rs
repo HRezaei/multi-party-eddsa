@@ -24,7 +24,7 @@ mod tests {
     use curv::elliptic::curves::ed25519::{FE, GE};
     use curv::elliptic::curves::traits::ECScalar;
     use curv::BigInt;
-    use protocols::multisig::{partial_sign, verify, EphKey, Keys, Signature};
+    use crate::protocols::multisig::{partial_sign, verify, EphKey, Keys, Signature};
 
     #[test]
     fn two_party_key_gen() {

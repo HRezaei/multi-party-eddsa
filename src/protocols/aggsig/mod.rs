@@ -1,23 +1,8 @@
 #![allow(non_snake_case)]
-/*
-    multi-party-ed25519
 
-    Copyright 2018 by Kzen Networks
+extern crate curv;
 
-    This file is part of multi-party-ed25519 library
-    (https://github.com/KZen-networks/multisig-schnorr)
 
-    multi-party-ed25519 is free software: you can redistribute
-    it and/or modify it under the terms of the GNU General Public
-    License as published by the Free Software Foundation, either
-    version 3 of the License, or (at your option) any later version.
-
-    @license GPL-3.0+ <https://github.com/KZen-networks/multi-party-ed25519/blob/master/LICENSE>
-*/
-
-//! Simple ed25519
-//!
-//! See https://tools.ietf.org/html/rfc8032
 pub use curv::arithmetic::traits::Samplable;
 use curv::cryptographic_primitives::proofs::*;
 use curv::elliptic::curves::ed25519::{FE, GE};
@@ -30,6 +15,7 @@ use curv::cryptographic_primitives::hashing::traits::*;
 pub use curv::arithmetic::traits::Converter;
 use curv::cryptographic_primitives::commitments::hash_commitment::HashCommitment;
 use curv::cryptographic_primitives::commitments::traits::*;
+use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExpendedPrivateKey {

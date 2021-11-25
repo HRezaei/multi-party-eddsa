@@ -14,7 +14,7 @@
 mod tests {
     use curv::cryptographic_primitives::secret_sharing::feldman_vss::VerifiableSS;
     use curv::elliptic::curves::ed25519::{FE, GE};
-    use protocols::thresholdsig::*;
+    use crate::protocols::thresholdsig::*;
 
     #[test]
     fn test_t2_n4() {
