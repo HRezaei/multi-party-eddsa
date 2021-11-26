@@ -23,22 +23,37 @@ use curv::cryptographic_primitives::commitments::traits::Commitment;
 use curv::cryptographic_primitives::hashing::hash_sha512::HSha512;
 use curv::cryptographic_primitives::hashing::traits::*;
 use curv::cryptographic_primitives::secret_sharing::feldman_vss::VerifiableSS;
+use curv::cryptographic_primitives::proofs::sigma_dlog::DLogProof;
 use curv::elliptic::curves::ed25519::{FE, GE};
 use curv::BigInt;
 use serde::{Serialize, Deserialize};
+use paillier::{
+    DecryptionKey, EncryptionKey, KeyGeneration, Paillier,
+};
 
 const SECURITY: usize = 256;
 
 // u_i is private key and {u__i, prefix} are extended private key.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Keys {
     pub u_i: FE,
     pub y_i: GE,
     pub prefix: FE,
     pub party_index: usize,
+    pub dk: DecryptionKey,
+    pub ek: EncryptionKey,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct KeyGenBroadcastMessage1 {
     com: BigInt,
+    pub e: EncryptionKey
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct KeyGenDecommitMessage1 {
+    pub blind_factor: BigInt,
+    pub y_i: GE,
 }
 
 #[derive(Debug)]
@@ -106,22 +121,33 @@ impl Keys {
         let prefix: FE = ECScalar::from(&BigInt::from_bytes(prefix));
         let public_key = ec_point * &private_key;
 
+        let (ek, dk) = Paillier::keypair().keys();
+
         Keys {
             u_i: private_key,
             y_i: public_key,
             prefix,
             party_index: index.clone(),
+            ek,
+            dk
         }
     }
 
-    pub fn phase1_broadcast(&self) -> (KeyGenBroadcastMessage1, BigInt) {
+    pub fn phase1_broadcast(&self) -> (KeyGenBroadcastMessage1, KeyGenDecommitMessage1) {
         let blind_factor = BigInt::sample(SECURITY);
         let com = HashCommitment::create_commitment_with_user_defined_randomness(
             &self.y_i.bytes_compressed_to_big_int(),
             &blind_factor,
         );
-        let bcm1 = KeyGenBroadcastMessage1 { com };
-        (bcm1, blind_factor)
+        let bcm1 = KeyGenBroadcastMessage1 {
+            com,
+            e: self.ek.clone()
+        };
+        let decom1 = KeyGenDecommitMessage1 {
+            blind_factor,
+            y_i: self.y_i,
+        };
+        (bcm1, decom1)
     }
 
     pub fn phase1_verify_com_phase2_distribute(
@@ -166,7 +192,7 @@ impl Keys {
         secret_shares_vec: &Vec<FE>,
         vss_scheme_vec: &Vec<VerifiableSS<GE>>,
         index: &usize,
-    ) -> Result<SharedKeys, Error> {
+    ) -> Result<(SharedKeys, DLogProof<GE>), Error> {
         assert_eq!(y_vec.len(), params.share_count);
         assert_eq!(secret_shares_vec.len(), params.share_count);
         assert_eq!(vss_scheme_vec.len(), params.share_count);
@@ -186,13 +212,32 @@ impl Keys {
                 let y0 = y_vec_iter.next().unwrap();
                 let y = y_vec_iter.fold(y0.clone(), |acc, x| acc + x);
                 let x_i = secret_shares_vec.iter().fold(FE::zero(), |acc, x| acc + x);
-                Ok(SharedKeys {
+                let dlog_proof = DLogProof::prove(&x_i);
+                Ok((SharedKeys {
                     y,
                     x_i,
                     prefix: self.prefix,
-                })
+                }, dlog_proof))
             }
             false => Err(InvalidSS),
+        }
+    }
+
+    pub fn verify_dlog_proofs(
+        params: &Parameters,
+        dlog_proofs_vec: &[DLogProof<GE>],
+        y_vec: &[GE],
+    ) -> Result<(), Error> {
+        assert_eq!(y_vec.len(), params.share_count);
+        assert_eq!(dlog_proofs_vec.len(), params.share_count);
+        let xi_dlog_verify = (0..y_vec.len())
+            .map(|i| DLogProof::verify(&dlog_proofs_vec[i]).is_ok())
+            .all(|x| x);
+
+        if xi_dlog_verify {
+            Ok(())
+        } else {
+            Err(InvalidKey)
         }
     }
 }
@@ -229,7 +274,12 @@ impl EphemeralKey {
             &self.R_i.bytes_compressed_to_big_int(),
             &blind_factor,
         );
-        let bcm1 = KeyGenBroadcastMessage1 { com };
+        let (ek, dk) = Paillier::keypair().keys();
+
+        let bcm1 = KeyGenBroadcastMessage1 {
+            com,
+            e: ek
+        };
         (bcm1, blind_factor)
     }
 
