@@ -145,9 +145,9 @@ mod tests {
         let mut bc1_vec = Vec::new();
         let mut blind_vec = Vec::new();
         for i in 0..n.clone() {
-            let (bc1, blind) = party_keys_vec[i].phase1_broadcast();
+            let (bc1, decom) = party_keys_vec[i].phase1_broadcast();
             bc1_vec.push(bc1);
-            blind_vec.push(blind);
+            blind_vec.push(decom.blind_factor);
         }
 
         let y_vec = (0..n.clone())
@@ -184,7 +184,7 @@ mod tests {
 
         let mut shared_keys_vec = Vec::new();
         for i in 0..n.clone() {
-            let shared_keys = party_keys_vec[i]
+            let (shared_keys, dlog_proof) = party_keys_vec[i]
                 .phase2_verify_vss_construct_keypair(
                     &parames,
                     &y_vec,

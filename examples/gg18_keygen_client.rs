@@ -109,7 +109,7 @@ fn main() {
             point_vec.push(decom_i.y_i);
             blind_vec.push(decom_i.clone().blind_factor);
         } else {
-            let decom_j: KeyGenDecommitMessage1 = serde_json::from_str(&round2_ans_vec[j]).unwrap();
+            let decom_j: KeyGenDecommitMessage1 = serde_json::from_str::<KeyGenDecommitMessage1>(&round2_ans_vec[j]).unwrap();
             point_vec.push(decom_j.y_i);
             blind_vec.push(decom_j.clone().blind_factor);
             let key_bn: BigInt = (decom_j.y_i.clone() * party_keys.u_i).x_coor().unwrap();

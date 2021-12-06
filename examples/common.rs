@@ -5,7 +5,7 @@ use aes_gcm::aead::{NewAead, Aead, Payload};
 
 use curv::{
     arithmetic::traits::Converter,
-    elliptic::curves::secp256_k1::{FE, GE},
+    elliptic::curves::ed25519::{FE, GE},
     elliptic::curves::traits::{ECPoint, ECScalar},
     BigInt,
 };
@@ -225,11 +225,11 @@ pub fn check_sig(r: &FE, s: &FE, msg: &BigInt, pk: &GE) {
     let pk = PublicKey::parse_slice(&raw_pk, Some(PublicKeyFormat::Full)).unwrap();
 
     let mut compact: Vec<u8> = Vec::new();
-    let bytes_r = &r.get_element()[..];
+    let bytes_r = &r.get_element().to_bytes();
     compact.extend(vec![0u8; 32 - bytes_r.len()]);
     compact.extend(bytes_r.iter());
 
-    let bytes_s = &s.get_element()[..];
+    let bytes_s = &s.get_element().to_bytes();
     compact.extend(vec![0u8; 32 - bytes_s.len()]);
     compact.extend(bytes_s.iter());
 
