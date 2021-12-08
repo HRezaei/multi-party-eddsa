@@ -9,6 +9,8 @@ use curv::{
     elliptic::curves::traits::{ECPoint, ECScalar},
     BigInt,
 };
+use curv::cryptographic_primitives::secret_sharing::feldman_vss::VerifiableSS;
+use curv::elliptic::curves::ed25519::Ed25519Scalar;
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -237,4 +239,22 @@ pub fn check_sig(r: &FE, s: &FE, msg: &BigInt, pk: &GE) {
 
     let is_correct = verify(&msg, &secp_sig, &pk);
     assert!(is_correct);
+}
+
+pub fn correct_verifiable_ss(vss: VerifiableSS<GE>) -> VerifiableSS<GE> {
+    //Since curv v0.7 does multiply GE's with 8 in deserialization, we have to correct them here:
+    //See https://github.com/ZenGo-X/curv/issues/156#issuecomment-987657279
+    let eight: Ed25519Scalar = ECScalar::from(&BigInt::from(8));
+    let eight_invert = eight.invert();
+
+    let corrected_commitments = vss.commitments.iter()
+        .map(|g| g * &eight_invert)
+        .collect();
+
+    let corrected_vss = VerifiableSS {
+        parameters: vss.parameters,
+        commitments: corrected_commitments,
+    };
+
+    corrected_vss
 }

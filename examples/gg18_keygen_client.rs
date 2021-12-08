@@ -18,12 +18,14 @@ use multi_party_eddsa::protocols::thresholdsig::{
 use paillier::EncryptionKey;
 use reqwest::Client;
 use std::{env, fs, time};
+use curv::elliptic::curves::ed25519::Ed25519Scalar;
 
 mod common;
 use common::{
     aes_decrypt, aes_encrypt, broadcast, poll_for_broadcasts, poll_for_p2p, postb, sendp2p, Params,
     PartySignup, AEAD, AES_KEY_BYTES_LEN,
 };
+use crate::common::correct_verifiable_ss;
 
 fn main() {
     if env::args().nth(3).is_some() {
@@ -36,6 +38,11 @@ fn main() {
     let data = fs::read_to_string("params.json")
         .expect("Unable to read params, make sure config file is present in the same folder ");
     let params: Params = serde_json::from_str(&data).unwrap();
+
+    run_keygen(params);
+}
+
+pub fn run_keygen(params: Params) {
     let PARTIES: u16 = params.parties.parse::<u16>().unwrap();
     let THRESHOLD: u16 = params.threshold.parse::<u16>().unwrap();
 
@@ -104,13 +111,18 @@ fn main() {
     let mut point_vec: Vec<GE> = Vec::new();
     let mut blind_vec: Vec<BigInt> = Vec::new();
     let mut enc_keys: Vec<Vec<u8>> = Vec::new();
+    let eight: Ed25519Scalar = ECScalar::from(&BigInt::from(8));
+    let eight_invert = eight.invert();
     for i in 1..=PARTIES {
         if i == party_num_int {
             point_vec.push(decom_i.y_i);
             blind_vec.push(decom_i.clone().blind_factor);
         } else {
             let decom_j: KeyGenDecommitMessage1 = serde_json::from_str::<KeyGenDecommitMessage1>(&round2_ans_vec[j]).unwrap();
-            point_vec.push(decom_j.y_i);
+
+            //Since curv v0.7 does multiply GE's with 8 in deserialization, we have to correct them here:
+            //See https://github.com/ZenGo-X/curv/issues/156#issuecomment-987657279
+            point_vec.push(decom_j.y_i * eight_invert.clone());
             blind_vec.push(decom_j.clone().blind_factor);
             let key_bn: BigInt = (decom_j.y_i.clone() * party_keys.u_i).x_coor().unwrap();
             let key_bytes = BigInt::to_bytes(&key_bn);
@@ -207,7 +219,11 @@ fn main() {
             vss_scheme_vec.push(vss_scheme.clone());
         } else {
             let vss_scheme_j: VerifiableSS<GE> = serde_json::from_str(&round4_ans_vec[j]).unwrap();
-            vss_scheme_vec.push(vss_scheme_j);
+
+            //Since curv v0.7 does multiply GE's with 8 in deserialization, we have to correct them here:
+            //See https://github.com/ZenGo-X/curv/issues/156#issuecomment-987657279
+            let corrected_vss_scheme_j = correct_verifiable_ss(vss_scheme_j);
+            vss_scheme_vec.push(corrected_vss_scheme_j);
             j += 1;
         }
     }
@@ -247,11 +263,20 @@ fn main() {
             dlog_proof_vec.push(dlog_proof.clone());
         } else {
             let dlog_proof_j: DLogProof<GE> = serde_json::from_str(&round5_ans_vec[j]).unwrap();
-            dlog_proof_vec.push(dlog_proof_j);
+
+            //Since curv v0.7 does multiply GE with 8 in deserialization, we have to correct them here:
+            //See https://github.com/ZenGo-X/curv/issues/156#issuecomment-987657279
+            let corrected_dlog_proof_j = DLogProof {
+                pk: dlog_proof_j.pk * eight_invert,
+                pk_t_rand_commitment: dlog_proof_j.pk_t_rand_commitment * eight_invert,
+                challenge_response: dlog_proof_j.challenge_response
+            };
+            dlog_proof_vec.push(corrected_dlog_proof_j);
             j += 1;
         }
     }
-    Keys::verify_dlog_proofs(&params, &dlog_proof_vec, &point_vec).expect("bad dlog proof");
+    Keys::verify_dlog_proofs(&params, &dlog_proof_vec, &point_vec)
+        .expect("bad dlog proof");
 
     //save key to file:
     let paillier_key_vec = (0..PARTIES)
