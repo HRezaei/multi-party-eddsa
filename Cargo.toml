@@ -5,11 +5,8 @@ authors = [
     "Omer <omer@kzencorp.com>",
     "Gary <gary@kzencorp.com>"
 ]
-edition = "2018"
+edition = "2021"
 
-[[bin]]
-name = "test"
-path = "src/main.rs"
 
 [dependencies]
 curv = { package = "curv-kzen", version = "0.7", default-features = false }
@@ -36,6 +33,9 @@ default = ["curv/rust-gmp-kzen"]
 
 [[example]]
 name = "gg18_keygen_client"
+
+[[example]]
+name = "eph_sign_client"
 
 [[example]]
 name = "common"

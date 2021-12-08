@@ -80,6 +80,7 @@ pub struct EphemeralSharedKeys {
     pub r_i: FE,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct LocalSig {
     gamma_i: FE,
     k: FE,
@@ -274,7 +275,7 @@ impl EphemeralKey {
             &self.R_i.bytes_compressed_to_big_int(),
             &blind_factor,
         );
-        let (ek, dk) = Paillier::keypair().keys();
+        let (ek, _dk) = Paillier::keypair().keys();
 
         let bcm1 = KeyGenBroadcastMessage1 {
             com,
