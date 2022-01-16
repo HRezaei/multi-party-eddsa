@@ -20,7 +20,7 @@ serde_derive = "1.0"
 rand = "0.8"
 sha2 = "0.9"
 zeroize = "1"
-
+ed25519-bip32 = "0.4.0"
 
 [dev-dependencies]
 ed25519-dalek = "1.0.1"

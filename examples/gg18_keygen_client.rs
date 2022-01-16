@@ -2,6 +2,8 @@
 /// to run:
 /// 1: go to rocket_server -> cargo run
 /// 2: cargo run from PARTIES number of terminals
+///
+use curv::arithmetic::Zero;
 use curv::{arithmetic::traits::Converter, cryptographic_primitives::{
     proofs::sigma_dlog::DLogProof, secret_sharing::feldman_vss::VerifiableSS,
 }, BigInt};
@@ -103,19 +105,23 @@ pub fn run_keygen(params: Params) {
 
     let mut j = 0;
     let mut point_vec: Vec<Point<Ed25519>> = Vec::new();
+    let mut chain_code_vec: Vec<[u8;32]> = Vec::new();
     let mut blind_vec: Vec<BigInt> = Vec::new();
     let mut enc_keys: Vec<Vec<u8>> = Vec::new();
 
     for i in 1..=PARTIES {
         if i == party_num_int {
-            point_vec.push(decom_i.clone().y_i);
-            blind_vec.push(decom_i.clone().blind_factor);
+            let decom_i_clone = decom_i.clone();
+            point_vec.push(decom_i_clone.y_i);
+            blind_vec.push(decom_i_clone.blind_factor);
+            chain_code_vec.push(decom_i_clone.chain_code);
         } else {
             let decom_j: KeyGenDecommitMessage1 = serde_json::from_str::<KeyGenDecommitMessage1>(&round2_ans_vec[j]).unwrap();
-            
-            point_vec.push(decom_j.clone().y_i);
-            blind_vec.push(decom_j.clone().blind_factor);
-            let key_bn: BigInt = (decom_j.clone().y_i * party_keys.keypair.expanded_private_key.private_key.clone()).x_coord().unwrap();
+            let decom_j_clone = decom_j.clone();
+            point_vec.push(decom_j.y_i);
+            blind_vec.push(decom_j.blind_factor);
+            chain_code_vec.push(decom_j.chain_code);
+            let key_bn: BigInt = (decom_j_clone.y_i * party_keys.keypair.expanded_private_key.private_key.clone()).x_coord().unwrap();
             let key_bytes = BigInt::to_bytes(&key_bn);
             let mut template: Vec<u8> = vec![0u8; AES_KEY_BYTES_LEN - key_bytes.len()];
             template.extend_from_slice(&key_bytes[..]);
@@ -124,12 +130,10 @@ pub fn run_keygen(params: Params) {
         }
     }
 
+    let zero = BigInt::zero();
     let (head, tail) = point_vec.split_at(1);
     let y_sum = tail.iter().fold(head[0].clone(), |acc, x| acc + x);
-    /*let mut y_sum = &point_vec[0];
-    for i in 1..=point_vec.len() {
-        y_sum = &(y_sum + &point_vec[i]);
-    }*/
+    let chain_code_sum = chain_code_vec.iter().fold(zero, |acc, x| acc + BigInt::from_bytes(x));
 
     let key_gen_parties_points_vec = (0..PARTIES)
         .map(|i| i + 1)
@@ -279,6 +283,7 @@ pub fn run_keygen(params: Params) {
         vss_scheme_vec,
         //paillier_key_vec,
         y_sum,
+        chain_code_sum
     ))
     .unwrap();
     fs::write(env::args().nth(2).unwrap(), keygen_json).expect("Unable to save !");

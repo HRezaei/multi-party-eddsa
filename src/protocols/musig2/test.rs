@@ -21,8 +21,8 @@ mod tests {
     use rand::{Rng, RngCore};
     use std::convert::TryInto;
 
-    use protocols::tests::deterministic_fast_rand;
-    use protocols::{
+    use crate::protocols::tests::deterministic_fast_rand;
+    use crate::protocols::{
         musig2::{self, PublicKeyAgg},
         tests::verify_dalek,
         ExpandedKeyPair,

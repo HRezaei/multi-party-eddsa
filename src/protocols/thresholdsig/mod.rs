@@ -41,6 +41,7 @@ pub struct KeyGenBroadcastMessage1 {
 pub struct KeyGenDecommitMessage1 {
     pub blind_factor: BigInt,
     pub y_i: Point<Ed25519>,
+    pub chain_code: [u8;32]
 }
 
 #[derive(Debug)]
@@ -102,7 +103,8 @@ impl Keys {
         let bcm1 = KeyGenBroadcastMessage1 { com };
         (bcm1, KeyGenDecommitMessage1 {
             blind_factor,
-            y_i: self.keypair.public_key.clone()
+            y_i: self.keypair.public_key.clone(),
+            chain_code: self.keypair.expanded_private_key.chain_code.clone()
         })
     }
 

@@ -48,14 +48,6 @@ fn main() {
     });
     let sign_json = serde_json::to_string(&sign_json).unwrap();
 
-    /*let sign_json = serde_json::to_string(&(
-        "r",
-        (BigInt::from_bytes(&(signature.R).to_bytes(false))).to_str_radix(16),
-        "s",
-        (BigInt::from_bytes(&(signature.s).to_bytes())).to_str_radix(16),
-    ))
-    .unwrap();*/
-
     fs::write("signature.json".to_string(), sign_json.clone()).expect("Unable to save !");
 
     println!("{:?}", sign_json);
@@ -77,13 +69,13 @@ fn run_signer(key_file_path: String, params: Params, message_str:String) -> (Sig
 
     let data = fs::read_to_string(key_file_path)
         .expect("Unable to load keys, did you run keygen first? ");
-    let (party_keys, shared_keys, _, vss_scheme_vec, Y): (
+    let (party_keys, shared_keys, _, vss_scheme_vec, Y, _chain_code): (
         Keys,
         SharedKeys,
         u16,
         Vec<VerifiableSS<Ed25519>>,
-        //Vec<EncryptionKey>,
         Point<Ed25519>,
+        [u8;32]
     ) = serde_json::from_str(&data).unwrap();
 
     let THRESHOLD = params.threshold.parse::<u16>().unwrap();
