@@ -43,7 +43,7 @@ pub struct KeyGenDecommitMessage1 {
     pub y_i: GE,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Parameters {
     pub threshold: u16,   //t
     pub share_count: u16, //n
