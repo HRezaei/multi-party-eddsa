@@ -13,11 +13,11 @@ use multi_party_eddsa::protocols::thresholdsig::{SharedKeys};
 use reqwest::Client;
 use std::{env, fs, time};
 use std::time::Duration;
-use curv::elliptic::curves::{Ed25519, Point, Scalar};
+use curv::elliptic::curves::{Curve, Ed25519, Point, Scalar};
 
 mod common;
 use common::{
-    broadcast, poll_for_broadcasts, poll_for_p2p, postb, sendp2p, Params, PartySignup,
+    Params, PartySignup, PartyClient, ClientPurpose
 };
 use multi_party_eddsa::protocols::{Signature, thresholdsig};
 use multi_party_eddsa::protocols::thresholdsig::{EphemeralKey, EphemeralSharedKeys, Parameters, Keys, KeyGenBroadcastMessage1, LocalSig};
@@ -71,9 +71,20 @@ fn run_signer(key_file_path: String, params: Params, message_str:String) -> (Sig
         Err(_e) => message_str.as_bytes().to_vec(),
     };
     let message = &message[..];
-    let client = Client::new();
     // delay:
     let delay = time::Duration::from_millis(25);
+
+    let address = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "http://127.0.0.1:8001".to_string());
+
+    let client = PartyClient::new(
+        ClientPurpose::Sign,
+        Ed25519::CURVE_NAME,
+        address,
+        delay,
+        params.clone()
+    );
 
     let data = fs::read_to_string(key_file_path)
         .expect("Unable to load keys, did you run keygen first? ");
@@ -88,36 +99,24 @@ fn run_signer(key_file_path: String, params: Params, message_str:String) -> (Sig
 
     let THRESHOLD = params.threshold.parse::<u16>().unwrap();
     let PARTIES = params.parties.parse::<u16>().unwrap();
-    //signup:
-    let (party_num_int, uuid) = match signup(&client).unwrap() {
-        PartySignup { number, uuid } => (number, uuid),
-    };
-    println!("number: {:?}, uuid: {:?}", party_num_int, uuid);
 
     let (_eph_keys_vec, eph_shared_keys_vec, R, eph_vss_vec) = eph_keygen_t_n_parties(
         client.clone(),
-        uuid.clone(),
-        delay,
         THRESHOLD.clone(),
         PARTIES,
-        party_num_int,
         &party_keys,
         &message,
     );
 
     let local_sig = LocalSig::compute(
         &message,
-        &eph_shared_keys_vec[(party_num_int-1) as usize],
+        &eph_shared_keys_vec[(client.party_number-1) as usize],
         &shared_keys,
     );
 
-    let local_sig_vec = exchange_data(
-        client.clone(),
-        party_num_int,
+    let local_sig_vec = client.exchange_data(
         PARTIES,
-        uuid,
         "round1_local_sig",
-        delay,
         local_sig
     );
 
@@ -147,12 +146,9 @@ fn run_signer(key_file_path: String, params: Params, message_str:String) -> (Sig
 
 
 pub fn eph_keygen_t_n_parties(
-    client: Client,
-    uuid: String,
-    delay: Duration,
+    client: PartyClient,
     t: u16, // system threshold
     n: u16, // number of signers
-    party_num_int: u16,
     key_i: &Keys,
     message: &[u8],
 ) -> (
@@ -161,6 +157,8 @@ pub fn eph_keygen_t_n_parties(
     Point<Ed25519>,
     Vec<VerifiableSS<Ed25519>>,
 ) {
+    let party_num_int = client.party_number;
+
     let parties = (0..n)
         .map(|i| (i + 1) as u16)
         .collect::<Vec<u16>>();
@@ -182,21 +180,14 @@ pub fn eph_keygen_t_n_parties(
     let mut R_vec = Vec::new();
     let (bc_i, blind) = eph_party_key.phase1_broadcast();
 
-    assert!(broadcast(
-        &client,
-        party_num_int,
+    assert!(client.broadcast(
         "eph_keygen_round1",
         serde_json::to_string(&(bc_i.clone(), blind.clone(), eph_party_key.R_i.clone())).unwrap(),
-        uuid.clone()
     )
     .is_ok());
-    let round1_ans_vec = poll_for_broadcasts(
-        &client,
-        party_num_int,
+    let round1_ans_vec = client.poll_for_broadcasts(
         n as u16,
-        delay,
         "eph_keygen_round1",
-        uuid.clone(),
     );
 
     let mut j = 0;
@@ -231,21 +222,14 @@ pub fn eph_keygen_t_n_parties(
         .expect("invalid key");
 
     // round 2: send vss commitments
-    assert!(broadcast(
-        &client,
-        party_num_int,
+    assert!(client.broadcast(
         "eph_keygen_round2",
         serde_json::to_string(&vss_scheme).unwrap(),
-        uuid.clone()
     )
     .is_ok());
-    let round2_ans_vec = poll_for_broadcasts(
-        &client,
-        party_num_int,
+    let round2_ans_vec = client.poll_for_broadcasts(
         n as u16,
-        delay,
         "eph_keygen_round2",
-        uuid.clone(),
     );
 
     let mut j = 0;
@@ -270,26 +254,19 @@ pub fn eph_keygen_t_n_parties(
             let key_i = &enc_keys[j];
             let plaintext = BigInt::to_bytes(&secret_shares[k].to_bigint());
             let aead_pack_i = aes_encrypt(key_i, &plaintext);
-            assert!(sendp2p(
-                &client,
-                party_num_int,
+            assert!(client.sendp2p(
                 i as u16,
                 "eph_keygen_round3",
                 serde_json::to_string(&aead_pack_i).unwrap(),
-                uuid.clone()
             )
             .is_ok());
             j += 1;
         }
     }
 
-    let round3_ans_vec = poll_for_p2p(
-        &client,
-        party_num_int,
+    let round3_ans_vec = client.poll_for_p2p(
         n as u16,
-        delay,
         "eph_keygen_round3",
-        uuid.clone(),
     );
 
     let mut j = 0;
@@ -321,21 +298,14 @@ pub fn eph_keygen_t_n_parties(
         .expect("invalid vss");
 
     // round 4: send shared key
-    assert!(broadcast(
-        &client,
-        party_num_int,
+    assert!(client.broadcast(
         "eph_keygen_round4",
         serde_json::to_string(&eph_shared_key).unwrap(),
-        uuid.clone()
     )
     .is_ok());
-    let round4_ans_vec = poll_for_broadcasts(
-        &client,
-        party_num_int,
+    let round4_ans_vec = client.poll_for_broadcasts(
         n as u16,
-        delay,
         "eph_keygen_round4",
-        uuid.clone(),
     );
 
     let mut j = 0;
@@ -351,50 +321,3 @@ pub fn eph_keygen_t_n_parties(
 
     (eph_party_key, shared_keys_vec, R_sum, vss_scheme_vec)
 }
-
-pub fn signup(client: &Client) -> Result<PartySignup, ()> {
-    let key = "signup-sign".to_string();
-
-    let res_body = postb(&client, "signupsign", key).unwrap();
-    serde_json::from_str(&res_body).unwrap()
-}
-
-
-
-pub fn exchange_data<T>(client:Client, party_num:u16, n:u16, uuid:String, round: &str, delay: Duration, data:T) -> Vec<T>
-where
-    T: Clone + serde::de::DeserializeOwned + serde::Serialize,
-{
-    assert!(broadcast(
-        &client,
-        party_num,
-        &round,
-        serde_json::to_string(&data).unwrap(),
-        uuid.clone()
-    )
-    .is_ok());
-    let round_ans_vec = poll_for_broadcasts(
-        &client,
-        party_num,
-        n,
-        delay,
-        &round,
-        uuid.clone(),
-    );
-
-    let json_answers = round_ans_vec.clone();
-    let mut j = 0;
-    let mut answers: Vec<T> = Vec::new();
-    for i in 1..=n {
-        if i == party_num {
-            answers.push(data.clone());
-        } else {
-            let data_j: T = serde_json::from_str::<T>(&json_answers[j].clone()).unwrap();
-            answers.push(data_j);
-            j += 1;
-        }
-    }
-
-    return answers;
-}
-

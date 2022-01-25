@@ -10,14 +10,14 @@ use multi_party_eddsa::protocols::thresholdsig::{
 };
 use reqwest::Client;
 use std::{env, fs, time};
-use curv::elliptic::curves::{Ed25519, Point, Scalar};
+use curv::elliptic::curves::{Curve, Ed25519, Point, Scalar};
 use curv::elliptic::curves::ed25519::Ed25519Scalar;
 use sha2::{Sha256, Sha512};
 
 mod common;
 use common::{
-    aes_decrypt, aes_encrypt, broadcast, poll_for_broadcasts, poll_for_p2p, postb, sendp2p, Params,
-    PartySignup, AEAD, AES_KEY_BYTES_LEN,
+    aes_decrypt, aes_encrypt, Params,
+    PartySignup, AEAD, AES_KEY_BYTES_LEN, PartyClient, ClientPurpose
 };
 use multi_party_eddsa::Error;
 use multi_party_eddsa::Error::InvalidKey;
@@ -41,40 +41,40 @@ pub fn run_keygen(params: Params) {
     let PARTIES: u16 = params.parties.parse::<u16>().unwrap();
     let THRESHOLD: u16 = params.threshold.parse::<u16>().unwrap();
 
-    let client = Client::new();
+    let address = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "http://127.0.0.1:8001".to_string());
 
     // delay:
     let delay = time::Duration::from_millis(25);
+
+    let client = PartyClient::new(
+        ClientPurpose::Keygen,
+        Ed25519::CURVE_NAME,
+        address,
+        delay,
+        params
+    );
+
+    let party_num_int = client.party_number;
+
     let params = Parameters {
         threshold: THRESHOLD,
         share_count: PARTIES,
     };
 
-    //signup:
-    let (party_num_int, uuid) = match signup(&client).unwrap() {
-        PartySignup { number, uuid } => (number, uuid),
-    };
-    println!("number: {:?}, uuid: {:?}", party_num_int, uuid);
-
     let party_keys = Keys::phase1_create(party_num_int);
     let (bc_i, decom_i) = party_keys.phase1_broadcast();
 
     // send commitment to ephemeral public keys, get round 1 commitments of other parties
-    assert!(broadcast(
-        &client,
-        party_num_int,
+    assert!(client.broadcast(
         "round1",
         serde_json::to_string(&bc_i).unwrap(),
-        uuid.clone()
     )
     .is_ok());
-    let round1_ans_vec = poll_for_broadcasts(
-        &client,
-        party_num_int,
+    let round1_ans_vec = client.poll_for_broadcasts(
         PARTIES,
-        delay,
         "round1",
-        uuid.clone(),
     );
 
     let mut bc1_vec = round1_ans_vec
@@ -85,21 +85,14 @@ pub fn run_keygen(params: Params) {
     bc1_vec.insert(party_num_int as usize - 1, bc_i);
 
     // send ephemeral public keys and check commitments correctness
-    assert!(broadcast(
-        &client,
-        party_num_int,
+    assert!(client.broadcast(
         "round2",
         serde_json::to_string(&decom_i).unwrap(),
-        uuid.clone()
     )
     .is_ok());
-    let round2_ans_vec = poll_for_broadcasts(
-        &client,
-        party_num_int,
+    let round2_ans_vec = client.poll_for_broadcasts(
         PARTIES,
-        delay,
         "round2",
-        uuid.clone(),
     );
 
     let mut j = 0;
@@ -126,11 +119,7 @@ pub fn run_keygen(params: Params) {
     }
 
     let (head, tail) = point_vec.split_at(1);
-    let y_sum = tail.iter().fold(head[0].clone(), |acc, x| acc + x);
-    /*let mut y_sum = &point_vec[0];
-    for i in 1..=point_vec.len() {
-        y_sum = &(y_sum + &point_vec[i]);
-    }*/
+    let public_key = tail.iter().fold(head[0].clone(), |acc, x| acc + x);
 
     let key_gen_parties_points_vec = (0..PARTIES)
         .map(|i| i + 1)
@@ -151,26 +140,19 @@ pub fn run_keygen(params: Params) {
             let key_i = &enc_keys[j];
             let plaintext = BigInt::to_bytes(&secret_shares[k].to_bigint());
             let aead_pack_i = aes_encrypt(key_i, &plaintext);
-            assert!(sendp2p(
-                &client,
-                party_num_int,
+            assert!(client.sendp2p(
                 i,
                 "round3",
                 serde_json::to_string(&aead_pack_i).unwrap(),
-                uuid.clone()
             )
             .is_ok());
             j += 1;
         }
     }
 
-    let round3_ans_vec = poll_for_p2p(
-        &client,
-        party_num_int,
+    let round3_ans_vec = client.poll_for_p2p(
         PARTIES,
-        delay,
         "round3",
-        uuid.clone(),
     );
 
     let mut j = 0;
@@ -191,21 +173,14 @@ pub fn run_keygen(params: Params) {
     }
 
     // round 4: send vss commitments
-    assert!(broadcast(
-        &client,
-        party_num_int,
+    assert!(client.broadcast(
         "round4",
         serde_json::to_string(&vss_scheme).unwrap(),
-        uuid.clone()
     )
     .is_ok());
-    let round4_ans_vec = poll_for_broadcasts(
-        &client,
-        party_num_int,
+    let round4_ans_vec = client.poll_for_broadcasts(
         PARTIES,
-        delay,
         "round4",
-        uuid.clone(),
     );
 
     let mut j = 0;
@@ -234,21 +209,14 @@ pub fn run_keygen(params: Params) {
     let dlog_proof = DLogProof::prove(&shared_keys.x_i);
 
     // round 5: send dlog proof
-    assert!(broadcast(
-        &client,
-        party_num_int,
+    assert!(client.broadcast(
         "round5",
         serde_json::to_string(&dlog_proof).unwrap(),
-        uuid.clone()
     )
     .is_ok());
-    let round5_ans_vec = poll_for_broadcasts(
-        &client,
-        party_num_int,
+    let round5_ans_vec = client.poll_for_broadcasts(
         PARTIES,
-        delay,
         "round5",
-        uuid.clone(),
     );
 
     let mut j = 0;
@@ -279,17 +247,10 @@ pub fn run_keygen(params: Params) {
         party_num_int,
         vss_scheme_vec,
         //paillier_key_vec,
-        y_sum,
+        public_key,
     ))
     .unwrap();
     fs::write(env::args().nth(2).unwrap(), keygen_json).expect("Unable to save !");
-}
-
-pub fn signup(client: &Client) -> Result<PartySignup, ()> {
-    let key = "signup-keygen".to_string();
-
-    let res_body = postb(&client, "signupkeygen", key).unwrap();
-    serde_json::from_str(&res_body).unwrap()
 }
 
 
