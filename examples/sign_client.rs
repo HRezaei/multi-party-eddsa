@@ -87,7 +87,6 @@ fn run_signer(key_file_path: String, params: Params, message_str:String) -> (Sig
     ) = serde_json::from_str(&data).unwrap();
 
     let THRESHOLD = params.threshold.parse::<u16>().unwrap();
-    let PARTIES = params.parties.parse::<u16>().unwrap();
     //signup:
     let (party_num_int, uuid) = match signup(&client).unwrap() {
         PartySignup { number, uuid } => (number, uuid),
@@ -99,7 +98,7 @@ fn run_signer(key_file_path: String, params: Params, message_str:String) -> (Sig
         uuid.clone(),
         delay,
         THRESHOLD.clone(),
-        PARTIES,
+        THRESHOLD.clone()+1,
         party_num_int,
         &party_keys,
         &message,
@@ -114,14 +113,14 @@ fn run_signer(key_file_path: String, params: Params, message_str:String) -> (Sig
     let local_sig_vec = exchange_data(
         client.clone(),
         party_num_int,
-        PARTIES,
+        THRESHOLD.clone()+1,
         uuid,
         "round1_local_sig",
         delay,
         local_sig
     );
 
-    let parties_index_vec = (0..PARTIES)
+    let parties_index_vec = (0..THRESHOLD.clone()+1)
         .map(|i| i as u16)
         .collect::<Vec<u16>>();
 
