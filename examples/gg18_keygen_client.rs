@@ -283,7 +283,7 @@ pub fn run_keygen(params: Params) {
         vss_scheme_vec,
         //paillier_key_vec,
         y_sum,
-        chain_code_sum
+        Scalar::<Ed25519>::from_bigint(&chain_code_sum)
     ))
     .unwrap();
     fs::write(env::args().nth(2).unwrap(), keygen_json).expect("Unable to save !");

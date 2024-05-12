@@ -75,7 +75,7 @@ fn run_signer(key_file_path: String, params: Params, message_str:String) -> (Sig
         u16,
         Vec<VerifiableSS<Ed25519>>,
         Point<Ed25519>,
-        [u8;32]
+        Scalar<Ed25519>
     ) = serde_json::from_str(&data).unwrap();
 
     let THRESHOLD = params.threshold.parse::<u16>().unwrap();
